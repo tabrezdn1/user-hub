@@ -1,3 +1,17 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+import CredentialsProvider from "next-auth/providers/credentials";
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { authConfig } from './auth.config';
@@ -9,8 +23,6 @@ import bcrypt from 'bcrypt';
 async function getUser(email: string): Promise<User | undefined> {
   try {
     const user = await sql<User>`SELECT * from USERS where email=${email}`;
-    
-    return ({id: '1', name:'test',email:'test@test.com',password:'123123123'})
     return user.rows[0];
   } catch (error) {
     console.error('Failed to fetch user:', error);
@@ -20,32 +32,50 @@ async function getUser(email: string): Promise<User | undefined> {
  
 export const { auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  session: {
+    strategy: 'jwt',
+  },
   providers: [
-    Credentials({
-      async authorize(credentials) {
-        const parsedCredentials = z
-          .object({ email: z.string().email(), password: z.string().min(6) })
-          .safeParse(credentials);
- 
-        if (parsedCredentials.success) {
-          const { email, password } = parsedCredentials.data;
-
-          // Check for the special case credentials
-          if (email === "test@test.com" && password === "123123123") {
-            console.log('Special access granted');
-            return ({id: '1', name:'test', email:'test@test.com', password:'123123123'})
-          }
-
-          const user = await getUser(email);
-          if (!user) return null;
-          const passwordsMatch = await bcrypt.compare(password, user.password);
- 
-          if (passwordsMatch) return user;
-        }
- 
-        console.log('Invalid credentials');
-        return null;
-        }
-    }),
-  ],
+    CredentialsProvider({
+        credentials: {
+            email: {},
+            password: {},
+        },
+        authorize: async (credentials, req) => {
+            const url = 'http://localhost:8000/login/';//this should be env variable. should match port backend service is running on
+    
+            try {
+              const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                  username: credentials?.email || '',
+                  password: credentials?.password || '',
+                }),
+              });
+    
+              if (!response.ok) {
+                throw new Error('Invalid credentials');
+              }
+    
+              const data = await response.json();
+    
+              if (data.access_token) {
+                // Return user object
+                return {
+                  id: data.user_id,
+                  email: credentials.email,
+                  accessToken: data.access_token,
+                };
+              } else {
+                // Return null if user data could not be retrieved
+                return null;
+              }
+            } catch (error) {
+              console.error('Authorization error:', error);
+              return null;
+            }
+          },
+        }),
+  ]
 });
