@@ -32,50 +32,59 @@ async function getUser(email: string): Promise<User | undefined> {
  
 export const { auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  session: {
-    strategy: 'jwt',
-  },
-  providers: [
-    CredentialsProvider({
+    session: {
+      strategy: 'jwt',
+    },
+    providers: [
+      CredentialsProvider({
         credentials: {
-            email: {},
-            password: {},
+          email: { },
+          password: {  },
         },
-        authorize: async (credentials, req) => {
-            const url = 'http://localhost:8000/login/';//this should be env variable. should match port backend service is running on
-    
-            try {
-              const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({
-                  username: credentials?.email || '',
-                  password: credentials?.password || '',
-                }),
-              });
-    
-              if (!response.ok) {
-                throw new Error('Invalid credentials');
-              }
-    
-              const data = await response.json();
-    
-              if (data.access_token) {
-                // Return user object
-                return {
-                  id: data.user_id,
-                  email: credentials.email,
-                  accessToken: data.access_token,
-                };
-              } else {
-                // Return null if user data could not be retrieved
-                return null;
-              }
-            } catch (error) {
-              console.error('Authorization error:', error);
+        authorize: async (credentials) => {
+          const url = 'http://localhost:8000/login/';
+  
+          const parsedCredentials = z
+            .object({ email: z.string().email(), password: z.string().min(6) })
+            .safeParse(credentials);
+  
+          if (!parsedCredentials.success) {
+            console.error('Invalid credentials format');
+            return null;
+          }
+  
+          const { email, password } = parsedCredentials.data;
+  
+          try {
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                username: email,
+                password: password,
+              }),
+            });
+  
+            if (!response.ok) {
+              throw new Error('Invalid credentials');
+            }
+  
+            const data = await response.json();
+  
+            if (data.access_token) {
+              return {
+                id: data.user_id,
+                email: email,
+                accessToken: data.access_token,
+              };
+            } else {
               return null;
             }
-          },
-        }),
-  ]
+          } catch (error) {
+            console.error('Authorization error:', error);
+            return null;
+          }
+        },
+      }),
+    ],
 });
